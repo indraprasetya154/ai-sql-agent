@@ -5,8 +5,6 @@ import json
 
 app = FastAPI()
 
-from typing import Optional
-
 class QueryRequest(BaseModel):
     message: str
 
