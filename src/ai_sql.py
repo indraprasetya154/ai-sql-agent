@@ -24,8 +24,8 @@ class AgentState(TypedDict):
     query_result: List[Any]
     final_response: str
 
-# Initialize components
-def initialize_components():
+# Initialize LLM
+def initialize_llm():
     google_api_key = config["GOOGLE_API_KEY"]
 
     safety_settings = {
@@ -35,12 +35,6 @@ def initialize_components():
         HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_NONE,
     }
 
-    # Initialize embeddings
-    embeddings = GoogleGenerativeAIEmbeddings(
-        model="models/text-embedding-004",
-        google_api_key=google_api_key
-    )
-
     # Initialize LLM
     llm = ChatGoogleGenerativeAI(
         model="models/gemini-2.0-flash",
@@ -48,8 +42,24 @@ def initialize_components():
         safety_settings=safety_settings,
         api_key=google_api_key
     )
+    
+    return llm
 
-    # Initialize vector store
+# Initialize embeddings
+def initialize_embeddings():
+    google_api_key = config["GOOGLE_API_KEY"]
+    
+    embeddings = GoogleGenerativeAIEmbeddings(
+        model="models/text-embedding-004",
+        google_api_key=google_api_key
+    )
+    
+    return embeddings
+
+# Initialize vector store
+def initialize_vector_store():
+    embeddings = get_embeddings()
+    
     d = len(embeddings.embed_query("hello"))
     index = faiss.IndexFlatL2(d)
 
@@ -64,7 +74,7 @@ def initialize_components():
     vector_store.add_documents(documents=sql_documents, ids=sql_uuids)
     print("Documents successfully added to vector store!")
 
-    return llm, vector_store
+    return vector_store
 
 # Node functions for the graph
 def retrieve_relevant_docs(state: AgentState) -> AgentState:
@@ -151,6 +161,8 @@ def generate_final_response(state: AgentState) -> AgentState:
 
         Jika memang bisa ditotalkan, totalkan hasil query
 
+        Buatkan response dalam bahasa manusia
+
         Query yang dijalankan : {state["sql_query"]}
         Document RAG : {retriever_result_query}
         Ini adalah output dari hasil query: {state["query_result"]}
@@ -177,18 +189,25 @@ def check_result(state: AgentState):
 
 # Global variables for singletons
 _llm = None
+_embeddings = None
 _vector_store = None
 
 def get_llm():
     global _llm
     if _llm is None:
-        _llm, _ = initialize_components()
+        _llm = initialize_llm()
     return _llm
+
+def get_embeddings():
+    global _embeddings
+    if _embeddings is None:
+        _embeddings = initialize_embeddings()
+    return _embeddings
 
 def get_vector_store():
     global _vector_store
     if _vector_store is None:
-        _, _vector_store = initialize_components()
+        _vector_store = initialize_vector_store()
     return _vector_store
 
 # Build the graph
@@ -222,10 +241,6 @@ def build_graph():
 
 # Main function to run the agent
 def ai_sql_agent(user_input: str):
-    # Initialize components if not already initialized
-    if _llm is None or _vector_store is None:
-        initialize_components()
-
     # Build the graph
     graph = build_graph()
 
@@ -236,4 +251,3 @@ def ai_sql_agent(user_input: str):
     except Exception as e:
         print(f"❌ Error during execution: {e}")
         return "Maaf saya belum menyimpan informasi tersebut saat ini, silahkan coba lagi nanti"
-
